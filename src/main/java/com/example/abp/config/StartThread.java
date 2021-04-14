@@ -1,19 +1,17 @@
 package com.example.abp.config;
 
+import com.example.abp.background.Auditor;
 import com.example.abp.udp.RequestUDP;
 import com.example.abp.udp.SequenceUDP;
 
 public class StartThread {
 	
-	public SequenceUDP sequenceUdp;
-	public RequestUDP requestUdp;
+	public Auditor auditor;
 	private static StartThread singletonInstance;
 	
 	private StartThread() {
-		requestUdp = new RequestUDP();
-		requestUdp.start();
-		sequenceUdp = new SequenceUDP();
-		sequenceUdp.start();
+		auditor = new Auditor();
+		auditor.start();
 	}
 	
 	public static StartThread getInstance() {

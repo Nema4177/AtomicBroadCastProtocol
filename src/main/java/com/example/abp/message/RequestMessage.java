@@ -1,27 +1,29 @@
 package com.example.abp.message;
 
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.simple.JSONObject;
 
 import com.example.abp.properties.Properties;
 
 public class RequestMessage implements Serializable{
-    public int senderId = Properties.senderId;
-    public String message;
+    /**
+	 * 
+	 */
+	private static final long serialVersionUID = 1L;
+	public int senderId = Properties.senderId;
+    //public String message;
+    public byte[] messagebytes;
     public int messageId;
-    public JSONObject getMetadata() {
-        return metadata;
-    }
-
-    public void setMetadata(JSONObject metadata) {
-        this.metadata = metadata;
-    }
-
-    private JSONObject metadata;
+    public int apiNumber;
+    public ConcurrentHashMap<Integer,Integer> completeMessagesReceived;
     
-    public RequestMessage(String mess,int messageId) {
-    	this.message=mess;
+    public RequestMessage(byte[] messageBytes,int messageId,int api) {
+    	this.messagebytes=messageBytes;
     	this.messageId = messageId;
+    	this.apiNumber = api;
+    	this.completeMessagesReceived = MessageRepository.getInstance().completeMessagesReceived;
     }
 }

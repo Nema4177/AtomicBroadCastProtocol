@@ -10,6 +10,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.example.abp.helper.GlobalMessHelper;
 import com.example.abp.message.GlobalSeqMessage;
@@ -49,9 +52,18 @@ public class SequenceUDP extends Thread {
 		try {
 			for (int peerServer : Properties.peers) {
 				DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, IPAddress,
-						Properties.requestListenPortMappoing.get(peerServer));
+						Properties.seqListenPortMappoing.get(peerServer));
 				clientSocket.send(sendPacket);
 			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void retransmitMessage(byte[] messageBytes, InetAddress ipAddress, int udpPort) {
+		try {
+			DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, ipAddress, udpPort);
+			clientSocket.send(sendPacket);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -84,7 +96,59 @@ public class SequenceUDP extends Thread {
 	void closeSocket() {
 		clientSocket.close();
 	}
-
+	
+	private synchronized void updateMetaData(GlobalSeqMessage globalSeqMessage,int lastGlobalSeqNo) {
+		MessageRepository.getInstance().sequenceMessageList.add(globalSeqMessage);
+		
+		HashMap<Integer,Integer> senderMap = MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(globalSeqMessage.senderId);
+		senderMap.put(globalSeqMessage.messageId, globalSeqMessage.globalSeqId);
+		MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.put(globalSeqMessage.senderId, senderMap);
+		
+		MessageRepository.getInstance().deliveryQueue.add(globalSeqMessage);
+		updateCompleteMessagesReceived(globalSeqMessage,lastGlobalSeqNo);
+	}
+	
+	private synchronized void updateCompleteMessagesReceived(GlobalSeqMessage globalSeqMessage,int lastGlobalSeqNo) {
+		ConcurrentHashMap<Integer,Integer> receivedCompleteMessages = globalSeqMessage.completeMessagesReceived;
+		ConcurrentHashMap<Integer,Integer> currentCompleteMessages = MessageRepository.getInstance().completeMessagesReceived;
+		for(int peerId: Properties.peers) {
+			if(receivedCompleteMessages.get(peerId) > currentCompleteMessages.get(peerId)) {
+				currentCompleteMessages.put(peerId, receivedCompleteMessages.get(peerId));
+			}
+		}
+		int lastCompleteMessage = currentCompleteMessages.get(Properties.senderId);
+		List<GlobalSeqMessage> sequenceMessages = MessageRepository.getInstance().sequenceMessageList;
+		List<RequestMessage> requestMessages = MessageRepository.getInstance().requestMessageList;
+		for(int i=lastCompleteMessage+1; i<= lastGlobalSeqNo; i++) {
+			GlobalSeqMessage gSeqMessage = getSeqMessagePresent(sequenceMessages,i);
+			if(gSeqMessage != null) {
+				if(isReqMessagePresent(requestMessages,gSeqMessage.messageId,gSeqMessage.senderId)) {
+					lastCompleteMessage = i;
+				}else break;
+			}else break;
+		}
+		currentCompleteMessages.put(Properties.senderId, lastCompleteMessage);
+		MessageRepository.getInstance().completeMessagesReceived = currentCompleteMessages;
+	}
+	
+	private GlobalSeqMessage getSeqMessagePresent(List<GlobalSeqMessage> list,int requiredIndex) {
+		for(GlobalSeqMessage element: list) {
+			if(element.globalSeqId == requiredIndex) {
+				return element;
+			}
+		}
+		return null;
+	}
+	
+	private boolean isReqMessagePresent(List<RequestMessage> list,int requiredMessageId,int requiredSenderId) {
+		for(RequestMessage element: list) {
+			if(element.messageId == requiredMessageId && element.senderId == requiredSenderId) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
 	public void run() {
 		try {
 			this.IPAddress = InetAddress.getByName(Properties.hostIp);
@@ -96,6 +160,11 @@ public class SequenceUDP extends Thread {
 			try {
 
 				GlobalSeqMessage globalSeqMessage = receivePacket();
+				String messageString = new String(globalSeqMessage.messageBytes);
+				if(messageString.equals(Properties.retransmitMessage)) {
+					triggerRetransmit(globalSeqMessage);
+					continue;
+				}
 				if (globalSeqMessage.globalSeqId > MessageRepository.getInstance().lastGlobalSeqNo) {
 					if (globalSeqMessage.globalSeqId > MessageRepository.getInstance().lastGlobalSeqNo + 1) {
 						for (int i = MessageRepository
@@ -111,18 +180,31 @@ public class SequenceUDP extends Thread {
 						MessageRepository.getInstance().assignGlobalSeq = false;
 					}
 				}
-				System.out.println("GlobalSeqMessage received");
-				System.out.println("Global Seq Id: " + globalSeqMessage.globalSeqId);
-				System.out.println("Message Id: " + globalSeqMessage.messageId);
-				System.out.println("Sender Id: " + globalSeqMessage.senderId);
-				System.out.println("Message: " + globalSeqMessage.message);
-
-				System.out.println("Delivering Message: " + globalSeqMessage.message);
+				updateMetaData(globalSeqMessage,MessageRepository.getInstance().lastGlobalSeqNo);
+				System.out.println("GlobalSeqMessage received"+" Global Seq Id: " + globalSeqMessage.globalSeqId+" Message Id: " + globalSeqMessage.messageId+"Sender Id: " + globalSeqMessage.senderId+" Message: " + new String(globalSeqMessage.messageBytes));
+				System.out.println("Delivering Message: " + new String(globalSeqMessage.messageBytes));
+				//TODO-add DB call
 			} catch (Exception e) {
 				e.printStackTrace();
 				listen = false;
 			}
 		}
 		closeSocket();
+	}
+	
+	void triggerRetransmit(GlobalSeqMessage seqMessage) {
+		try {
+			int globalSeqId = seqMessage.globalSeqId;
+			int senderId = seqMessage.senderId;
+			List<GlobalSeqMessage> seqMessages = MessageRepository.getInstance().sequenceMessageList;
+			for(GlobalSeqMessage gSeqMessage: seqMessages) {
+				if(gSeqMessage.globalSeqId == globalSeqId) {
+					byte[] seqBytes = convertToBytes(gSeqMessage);
+					retransmitMessage(seqBytes,InetAddress.getByName(Properties.hostIp),Properties.seqListenPortMappoing.get(senderId));
+				}
+			}
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
 	}
 }

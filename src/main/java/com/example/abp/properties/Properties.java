@@ -17,7 +17,6 @@ public class Properties {
 	public static final String retransmitMessage = "retransmit message";
 	public static final ArrayList<Integer> peers = new ArrayList<Integer>() {{
 		add(2);
-		add(3);
 	}};
 	public static final HashMap<Integer,Integer> requestListenPortMappoing = new HashMap<Integer,Integer>(){
 		{
@@ -31,4 +30,5 @@ public class Properties {
 			put(2,3001);
 		}
 	};
+	public static final int apiNumber = 1;
 }

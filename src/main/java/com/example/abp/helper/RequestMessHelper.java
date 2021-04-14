@@ -2,6 +2,7 @@ package com.example.abp.helper;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.HashMap;
 
 import com.example.abp.message.GlobalSeqMessage;
 import com.example.abp.message.MessageRepository;
@@ -21,20 +22,41 @@ public class RequestMessHelper {
 			requestHelper = new RequestMessHelper();
 		return requestHelper;
 	}
+	
+	private RequestMessHelper() {
+		requestUdp = new RequestUDP();
+		requestUdp.start();
+	}
 
-	public boolean globalSeqNumbersForAllSenderMessagesLessThan(int sender,int currLocalSeqNo) {
+	public int getLastWithoutSeqNumber(int sender,int currLocalSeqNo) {
+		HashMap<Integer,Integer> senderMap = MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(sender);
+		if(senderMap == null){
+			senderMap = new HashMap<Integer,Integer>();
+			MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.put(sender, senderMap);
+			return 1;
+		}
 		for(int i=1; i<currLocalSeqNo; i++) {
 			if( MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(sender).get(i) == null) {
 				System.out.println("No glboal seq no assigned for sender: "+sender+" messageId: "+i);
-				return false;
+				return i;
 			}
 		}
-		return true;
+		return currLocalSeqNo;
+	}
+	
+	public RequestMessage getRequestMessage(int senderId,int localSeqNo) {
+		RequestMessage requestMessage = null;
+		for(RequestMessage req: MessageRepository.getInstance().requestMessageList) {
+			if(req.senderId == senderId && req.messageId == localSeqNo) {
+				return req;
+			}
+		}
+		return requestMessage;
 	}
 	
 	public void requestRetransmitReqMessage(int serverId, int requestId) {
 		System.out.println("Retransmit request received for server id: "+serverId+" requestId: "+requestId);
-		RequestMessage seqMessage = new RequestMessage(Properties.retransmitMessage,Properties.senderId);
+		RequestMessage seqMessage = new RequestMessage(Properties.retransmitMessage.getBytes(),Properties.senderId,Properties.apiNumber);
 		byte[] messageBytes = requestUdp.convertToBytes(seqMessage);
 		try {
 			int machinePort = Properties.requestListenPortMappoing.get(serverId);

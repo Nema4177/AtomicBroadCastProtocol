@@ -10,6 +10,9 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.example.abp.helper.GlobalMessHelper;
 import com.example.abp.helper.RequestMessHelper;
@@ -24,6 +27,7 @@ public class RequestUDP extends Thread{
 	DatagramSocket clientSocket ;
 	private boolean listen = true;
 	GlobalMessHelper globalMessHelper = GlobalMessHelper.getInstance();
+	
 	public byte[] convertToBytes(Object object) {
 		byte[] serializedMessage = null;
 		try {
@@ -57,6 +61,15 @@ public class RequestUDP extends Thread{
 			e.printStackTrace();
 		}
 	}
+	
+	public void retransmitMessage(byte[] messageBytes, InetAddress ipAddress, int udpPort) {
+		try {
+			DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, ipAddress, udpPort);
+			clientSocket.send(sendPacket);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
 
 	public RequestMessage receivePacket() {
 		RequestMessage message=null;
@@ -78,6 +91,64 @@ public class RequestUDP extends Thread{
 		clientSocket.close();
 	}
 	
+	private synchronized void updateCompleteMessagesReceived(RequestMessage requestMessage,int lastGlobalSeqNo) {
+		ConcurrentHashMap<Integer,Integer> receivedCompleteMessages = requestMessage.completeMessagesReceived;
+		ConcurrentHashMap<Integer,Integer> currentCompleteMessages = MessageRepository.getInstance().completeMessagesReceived;
+		for(int peerId: Properties.peers) {
+			if(receivedCompleteMessages.get(peerId) > currentCompleteMessages.get(peerId)) {
+				currentCompleteMessages.put(peerId, receivedCompleteMessages.get(peerId));
+			}
+		}
+		int lastCompleteMessage = currentCompleteMessages.get(Properties.senderId);
+		List<GlobalSeqMessage> sequenceMessages = MessageRepository.getInstance().sequenceMessageList;
+		List<RequestMessage> requestMessages = MessageRepository.getInstance().requestMessageList;
+		for(int i=lastCompleteMessage+1; i<= lastGlobalSeqNo; i++) {
+			GlobalSeqMessage gSeqMessage = getSeqMessagePresent(sequenceMessages,i);
+			if(gSeqMessage != null) {
+				if(isReqMessagePresent(requestMessages,gSeqMessage.messageId,gSeqMessage.senderId)) {
+					lastCompleteMessage = i;
+				}else break;
+			}else break;
+		}
+		currentCompleteMessages.put(Properties.senderId, lastCompleteMessage);
+		MessageRepository.getInstance().completeMessagesReceived = currentCompleteMessages;
+	}
+	
+	private GlobalSeqMessage getSeqMessagePresent(List<GlobalSeqMessage> list,int requiredIndex) {
+		for(GlobalSeqMessage element: list) {
+			if(element.globalSeqId == requiredIndex) {
+				return element;
+			}
+		}
+		return null;
+	}
+	
+	private boolean isReqMessagePresent(List<RequestMessage> list,int requiredMessageId,int requiredSenderId) {
+		for(RequestMessage element: list) {
+			if(element.messageId == requiredMessageId && element.senderId == requiredSenderId) {
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	private int getLastMessage(int senderId) {
+		List<Integer> reqMessageIdList = MessageRepository.getInstance().serverToRequestMapping.get(senderId);
+		int lastMessage=0;
+		for(int reqMessageId: reqMessageIdList) {
+			if(reqMessageId > lastMessage) {
+				lastMessage = reqMessageId;
+			}
+		}
+		return lastMessage;
+	}
+	
+	private void updateSenderReqList(RequestMessage requestMessage) {
+		ArrayList<Integer> reqMessageIdList = MessageRepository.getInstance().serverToRequestMapping.get(requestMessage.senderId);
+		reqMessageIdList.add(requestMessage.messageId);
+		MessageRepository.getInstance().serverToRequestMapping.put(requestMessage.senderId, reqMessageIdList);
+	}
+	
 	public void run() {
 		try {
 			this.IPAddress = InetAddress.getByName(Properties.hostIp);
@@ -89,18 +160,26 @@ public class RequestUDP extends Thread{
             try {
 
             	RequestMessage requestMessage = receivePacket();
-                System.out.println("Request Message received");
-                System.out.println("Message Id: "+requestMessage.messageId);
-                System.out.println("Sender Id: "+requestMessage.senderId);
-                System.out.println("Message is: "+requestMessage.message);
-                int lastMessageFromServer = MessageRepository.getInstance().serverToRequestMapping.get(requestMessage.senderId);
+            	String messageString = new String(requestMessage.messagebytes);
+				if(messageString.equals(Properties.retransmitMessage)) {
+					triggerRetransmit(requestMessage);
+					continue;
+				}
+                System.out.println("Request Message received, Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId+" Message is: "+new String(requestMessage.messagebytes));
+                
+        		MessageRepository.getInstance().requestMessageList.add(requestMessage);
+                int lastMessageFromServer = getLastMessage(requestMessage.senderId);
+                updateSenderReqList(requestMessage);
                 if(requestMessage.messageId > lastMessageFromServer+1) {
                 	for(int i = requestMessage.messageId+1; i<requestMessage.messageId; i++) {
                     	RequestMessHelper.getInstance().requestRetransmitReqMessage(requestMessage.senderId, i);
                 	}
                 }
+                MessageRepository.getInstance().requestMessageList.add(requestMessage);
                 if(MessageRepository.getInstance().assignGlobalSeq == true) {
-                	globalMessHelper.sendGlobalSeqMessage(requestMessage);
+                	if(!globalMessHelper.hasGlobalSeqNo(requestMessage)) {
+                    	globalMessHelper.sendGlobalSeqMessage(requestMessage);
+                	}
                 }     
             } catch (Exception e) {
                 e.printStackTrace();
@@ -109,4 +188,20 @@ public class RequestUDP extends Thread{
         }
         closeSocket();
     }
+	
+	void triggerRetransmit(RequestMessage requestMessage) {
+		try {
+			int senderId = requestMessage.senderId;
+			int messageId = requestMessage.messageId;
+			List<RequestMessage> reqMessages = MessageRepository.getInstance().requestMessageList;
+			for(RequestMessage reqMessage: reqMessages) {
+				if(reqMessage.senderId == senderId && reqMessage.messageId == messageId) {
+					byte[] seqBytes = convertToBytes(reqMessage);
+					retransmitMessage(seqBytes,InetAddress.getByName(Properties.hostIp),Properties.requestListenPortMappoing.get(senderId));
+				}
+			}
+		}catch(Exception e) {
+			e.printStackTrace();
+		}
+	}
 }

@@ -5,6 +5,7 @@ import com.example.abp.helper.RequestMessHelper;
 import com.example.abp.message.GlobalSeqMessage;
 import com.example.abp.message.MessageRepository;
 import com.example.abp.message.RequestMessage;
+import com.example.abp.properties.Properties;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -36,21 +37,22 @@ public class ABPController {
 	public ResponseEntity<JSONObject> createAccount(@RequestBody JSONObject input) {
 		JSONObject entity = new JSONObject();
 		String message = (String) input.get("message");
-		RequestMessage requestMessage = new RequestMessage(message,getNextId());
-		System.out.println("Send Message constructed");
-        System.out.println("Message Id: "+requestMessage.messageId);
-        System.out.println("Sender Id: "+requestMessage.senderId);
-        System.out.println("Message is: "+requestMessage.message);		
+		RequestMessage requestMessage = new RequestMessage(message.getBytes(),getNextId(),Properties.apiNumber);
+		MessageRepository.getInstance().requestMessageList.add(requestMessage);
+		System.out.println("Send Message constructed: Request Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId);
+        System.out.println("Message is: "+message);		
         byte[] messageBytes = reqMessHelper.requestUdp.convertToBytes(requestMessage);
 		reqMessHelper.requestUdp.sendPacketToAll(messageBytes);
-		 if(MessageRepository.getInstance().assignGlobalSeq == true) {
-         	globalMessHelper.sendGlobalSeqMessage(requestMessage);
-         }
+		if(MessageRepository.getInstance().assignGlobalSeq == true) {
+        	if(!globalMessHelper.hasGlobalSeqNo(requestMessage)) {
+            	globalMessHelper.sendGlobalSeqMessage(requestMessage);
+        	}
+        }
 		entity.put("status", "success");
 		return new ResponseEntity<JSONObject>(entity, HttpStatus.OK);
 	}
 	
 	private int getNextId() {
-		return requestMessageId++;
+		return ++requestMessageId;
 	}
 }
