@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.log4j.Logger;
+
 import com.example.abp.helper.GlobalMessHelper;
 import com.example.abp.helper.RequestMessHelper;
 import com.example.abp.message.GlobalSeqMessage;
@@ -22,6 +24,8 @@ import com.example.abp.message.RequestMessage;
 import com.example.abp.properties.Properties;
 
 public class RequestUDP extends Thread{
+	
+	static Logger logger = Logger.getLogger(RequestUDP.class.getName());
 
 	InetAddress IPAddress;
 	DatagramSocket clientSocket ;
@@ -44,8 +48,8 @@ public class RequestUDP extends Thread{
 
 	public void sendPacketToAll(byte[] messageBytes) {
 		try {
-			for(int peerServer: Properties.peers) {
-				DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, IPAddress, Properties.requestListenPortMappoing.get(peerServer));
+			for(int i=1; i<=Properties.totalServers; i++) {
+				DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, IPAddress, Properties.requestListenPortMappoing.get(i));
 				clientSocket.send(sendPacket);
 			}
 		} catch (Exception e) {
@@ -74,7 +78,7 @@ public class RequestUDP extends Thread{
 	public RequestMessage receivePacket() {
 		RequestMessage message=null;
 		try {
-			byte[] receiveData = new byte[1024];
+			byte[] receiveData = new byte[2000];
 			DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 			clientSocket.receive(receivePacket);
 			ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(receivePacket.getData()));
@@ -165,7 +169,7 @@ public class RequestUDP extends Thread{
 					triggerRetransmit(requestMessage);
 					continue;
 				}
-                System.out.println("Request Message received, Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId+" Message is: "+new String(requestMessage.messagebytes));
+				logger.info("Request Message received, Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId+" Message is: "+new String(requestMessage.messagebytes));
                 
         		MessageRepository.getInstance().requestMessageList.add(requestMessage);
                 int lastMessageFromServer = getLastMessage(requestMessage.senderId);

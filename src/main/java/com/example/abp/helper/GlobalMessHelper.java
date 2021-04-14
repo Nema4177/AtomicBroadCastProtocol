@@ -6,6 +6,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.log4j.Logger;
+
+import com.example.abp.controller.ABPController;
 import com.example.abp.message.GlobalSeqMessage;
 import com.example.abp.message.MessageRepository;
 import com.example.abp.message.RequestMessage;
@@ -14,6 +17,8 @@ import com.example.abp.udp.RequestUDP;
 import com.example.abp.udp.SequenceUDP;
 
 public class GlobalMessHelper {
+	
+	static Logger logger = Logger.getLogger(GlobalMessHelper.class.getName());
 
 	public SequenceUDP sequenceUdp;
 
@@ -30,75 +35,22 @@ public class GlobalMessHelper {
 		return globalMessHelper;
 	}
 	
-	public synchronized void updateMessageRepository(GlobalSeqMessage seqMessage,RequestMessage requestMessage,int finishedGlobalSeqNo) {
-		
-		HashMap<Integer,Integer> senderMap = MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(requestMessage.senderId);
-		if(senderMap == null){
-			senderMap = new HashMap<Integer,Integer>();
-		}
-		senderMap.put(requestMessage.messageId, finishedGlobalSeqNo);
-		MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.put(requestMessage.senderId, senderMap);
-		MessageRepository.getInstance().sequenceMessageList.add(seqMessage);
-		MessageRepository.getInstance().deliveryQueue.add(seqMessage);
-		MessageRepository.getInstance().lastGlobalSeqNo = finishedGlobalSeqNo;
-		updateCompleteMessagesReceived(seqMessage,finishedGlobalSeqNo);
-		
-	}
-	
-	private synchronized void updateCompleteMessagesReceived(GlobalSeqMessage globalSeqMessage,int lastGlobalSeqNo) {
-		ConcurrentHashMap<Integer,Integer> currentCompleteMessages = MessageRepository.getInstance().completeMessagesReceived;
-		int lastCompleteMessage = currentCompleteMessages.get(Properties.senderId);
-		List<GlobalSeqMessage> sequenceMessages = MessageRepository.getInstance().sequenceMessageList;
-		List<RequestMessage> requestMessages = MessageRepository.getInstance().requestMessageList;
-		for(int i=lastCompleteMessage+1; i<= lastGlobalSeqNo; i++) {
-			GlobalSeqMessage gSeqMessage = getSeqMessagePresent(sequenceMessages,i);
-			if(gSeqMessage != null) {
-				if(isReqMessagePresent(requestMessages,gSeqMessage.messageId,gSeqMessage.senderId)) {
-					lastCompleteMessage = i;
-				}else break;
-			}else break;
-		}
-		currentCompleteMessages.put(Properties.senderId, lastCompleteMessage);
-		MessageRepository.getInstance().completeMessagesReceived = currentCompleteMessages;
-	}
-	
-	private GlobalSeqMessage getSeqMessagePresent(List<GlobalSeqMessage> list,int requiredIndex) {
-		for(GlobalSeqMessage element: list) {
-			if(element.globalSeqId == requiredIndex) {
-				return element;
-			}
-		}
-		return null;
-	}
-	
-	private boolean isReqMessagePresent(List<RequestMessage> list,int requiredMessageId,int requiredSenderId) {
-		for(RequestMessage element: list) {
-			if(element.messageId == requiredMessageId && element.senderId == requiredSenderId) {
-				return true;
-			}
-		}
-		return false;
-	}
-	
 	public void sendGlobalSeqMessage(RequestMessage requestMessage) {
 		int finishedGlobalSeqNo = MessageRepository.getInstance().lastGlobalSeqNo;
 		while(!checkIfReceivedAllGlobalSeqMessagesTillNow(finishedGlobalSeqNo));
 		int lastWithoutGlobalSeq = RequestMessHelper.getInstance().getLastWithoutSeqNumber(requestMessage.senderId,requestMessage.messageId);
 		if( lastWithoutGlobalSeq < requestMessage.messageId) {
 			requestMessage = RequestMessHelper.getInstance().getRequestMessage(requestMessage.senderId,lastWithoutGlobalSeq);
-			System.out.println("All prev messages of the sender does not have global seq number, hence retrieved older message");
+			logger.info("All prev messages of the sender does not have global seq number, hence retrieved older message");
 		};
 		GlobalSeqMessage seqMessage = new GlobalSeqMessage(++finishedGlobalSeqNo,
 				requestMessage.senderId, requestMessage.messageId, requestMessage.messagebytes);
-		System.out.println("Glboal Seq Message constructed"+" Global Seq Message Id: " + seqMessage.globalSeqId+" Sender Id: " + seqMessage.senderId+ " Message Id is: " + seqMessage.messageId+" Message is: " + new String(seqMessage.messageBytes));
+		logger.info("Glboal Seq Message constructed"+" Global Seq Message Id: " + seqMessage.globalSeqId+" Sender Id: " + seqMessage.senderId+ " Message Id is: " + seqMessage.messageId+" Message is: " + new String(seqMessage.messageBytes));
 		byte[] messageBytes = sequenceUdp.convertToBytes(seqMessage);
 		sequenceUdp.sendPacketToAll(messageBytes);
 
-		System.out.println("Global Seq Message sent, so delivering the message");
-		System.out.println("Delivered message : " + new String(seqMessage.messageBytes));
-		
-		updateMessageRepository(seqMessage,requestMessage,finishedGlobalSeqNo);
-		MessageRepository.getInstance().assignGlobalSeq = false;
+		logger.info("Global Seq Message sent, so delivering the message");		
+		//MessageRepository.getInstance().assignGlobalSeq = false;
 	}
 	
 	public boolean checkIfReceivedAllGlobalSeqMessagesTillNow(int lastGlobalSeqNo) {
@@ -119,11 +71,11 @@ public class GlobalMessHelper {
 	}
 	
 	public void requestRetransmitGlobalSeqMessage(int globalSeqId) {
-		System.out.println("Retransmit request received for glboal seq id: "+globalSeqId);
+		logger.info("Retransmit request received for glboal seq id: "+globalSeqId);
 		int serverNumber = globalSeqId % Properties.totalServers+1;
 		GlobalSeqMessage seqMessage = new GlobalSeqMessage(globalSeqId,
 				Properties.senderId, 0, Properties.retransmitMessage.getBytes());
-		System.out.println("Retransmit message constructed - globalSeqId: "+globalSeqId);
+		logger.info("Retransmit message constructed - globalSeqId: "+globalSeqId);
 		byte[] messageBytes = sequenceUdp.convertToBytes(seqMessage);
 		try {
 			int machinePort = Properties.seqListenPortMappoing.get(serverNumber);

@@ -5,10 +5,7 @@ import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class GlobalSeqMessage implements Serializable{
-	/**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
+	
 	public int globalSeqId;
     public int senderId;
     public int messageId;

@@ -9,10 +9,7 @@ import org.json.simple.JSONObject;
 import com.example.abp.properties.Properties;
 
 public class RequestMessage implements Serializable{
-    /**
-	 * 
-	 */
-	private static final long serialVersionUID = 1L;
+   
 	public int senderId = Properties.senderId;
     //public String message;
     public byte[] messagebytes;

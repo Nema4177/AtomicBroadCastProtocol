@@ -14,6 +14,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.log4j.Logger;
+
 import com.example.abp.helper.GlobalMessHelper;
 import com.example.abp.message.GlobalSeqMessage;
 import com.example.abp.message.MessageRepository;
@@ -21,6 +23,8 @@ import com.example.abp.message.RequestMessage;
 import com.example.abp.properties.Properties;
 
 public class SequenceUDP extends Thread {
+	
+	static Logger logger = Logger.getLogger(SequenceUDP.class.getName());
 
 	InetAddress IPAddress;
 	DatagramSocket clientSocket;
@@ -50,9 +54,8 @@ public class SequenceUDP extends Thread {
 
 	public void sendPacketToAll(byte[] messageBytes) {
 		try {
-			for (int peerServer : Properties.peers) {
-				DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, IPAddress,
-						Properties.seqListenPortMappoing.get(peerServer));
+			for(int i=1; i<=Properties.totalServers; i++) {
+				DatagramPacket sendPacket = new DatagramPacket(messageBytes, messageBytes.length, IPAddress, Properties.seqListenPortMappoing.get(i));
 				clientSocket.send(sendPacket);
 			}
 		} catch (Exception e) {
@@ -81,7 +84,7 @@ public class SequenceUDP extends Thread {
 	public GlobalSeqMessage receivePacket() {
 		GlobalSeqMessage message = null;
 		try {
-			byte[] receiveData = new byte[1024];
+			byte[] receiveData = new byte[3000];
 			DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
 			clientSocket.receive(receivePacket);
 			ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(receivePacket.getData()));
@@ -181,9 +184,7 @@ public class SequenceUDP extends Thread {
 					}
 				}
 				updateMetaData(globalSeqMessage,MessageRepository.getInstance().lastGlobalSeqNo);
-				System.out.println("GlobalSeqMessage received"+" Global Seq Id: " + globalSeqMessage.globalSeqId+" Message Id: " + globalSeqMessage.messageId+"Sender Id: " + globalSeqMessage.senderId+" Message: " + new String(globalSeqMessage.messageBytes));
-				System.out.println("Delivering Message: " + new String(globalSeqMessage.messageBytes));
-				//TODO-add DB call
+				logger.info("GlobalSeqMessage received"+" Global Seq Id: " + globalSeqMessage.globalSeqId+" Message Id: " + globalSeqMessage.messageId+"Sender Id: " + globalSeqMessage.senderId+" Message: " + new String(globalSeqMessage.messageBytes));
 			} catch (Exception e) {
 				e.printStackTrace();
 				listen = false;

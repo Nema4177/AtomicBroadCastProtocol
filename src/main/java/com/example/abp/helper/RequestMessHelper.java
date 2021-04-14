@@ -4,6 +4,8 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
 
+import org.apache.log4j.Logger;
+
 import com.example.abp.message.GlobalSeqMessage;
 import com.example.abp.message.MessageRepository;
 import com.example.abp.message.RequestMessage;
@@ -12,6 +14,8 @@ import com.example.abp.udp.RequestUDP;
 import com.example.abp.udp.SequenceUDP;
 
 public class RequestMessHelper {
+	
+	static Logger logger = Logger.getLogger(RequestMessHelper.class.getName());
 
 	public RequestUDP requestUdp;
 	
@@ -37,7 +41,7 @@ public class RequestMessHelper {
 		}
 		for(int i=1; i<currLocalSeqNo; i++) {
 			if( MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(sender).get(i) == null) {
-				System.out.println("No glboal seq no assigned for sender: "+sender+" messageId: "+i);
+				logger.info("No glboal seq no assigned for sender: "+sender+" messageId: "+i);
 				return i;
 			}
 		}
@@ -55,7 +59,7 @@ public class RequestMessHelper {
 	}
 	
 	public void requestRetransmitReqMessage(int serverId, int requestId) {
-		System.out.println("Retransmit request received for server id: "+serverId+" requestId: "+requestId);
+		logger.info("Retransmit request received for server id: "+serverId+" requestId: "+requestId);
 		RequestMessage seqMessage = new RequestMessage(Properties.retransmitMessage.getBytes(),Properties.senderId,Properties.apiNumber);
 		byte[] messageBytes = requestUdp.convertToBytes(seqMessage);
 		try {
