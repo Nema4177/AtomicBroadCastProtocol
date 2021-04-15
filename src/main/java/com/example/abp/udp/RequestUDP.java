@@ -149,6 +149,7 @@ public class RequestUDP extends Thread{
 	
 	private void updateSenderReqList(RequestMessage requestMessage) {
 		ArrayList<Integer> reqMessageIdList = MessageRepository.getInstance().serverToRequestMapping.get(requestMessage.senderId);
+		logger.info("Updating reqSenderId: "+requestMessage.senderId+" reqMessageId: "+requestMessage.messageId);
 		reqMessageIdList.add(requestMessage.messageId);
 		MessageRepository.getInstance().serverToRequestMapping.put(requestMessage.senderId, reqMessageIdList);
 	}
@@ -164,6 +165,7 @@ public class RequestUDP extends Thread{
             try {
 
             	RequestMessage requestMessage = receivePacket();
+				Properties.stateChange = true;
             	String messageString = new String(requestMessage.messagebytes);
 				if(messageString.equals(Properties.retransmitMessage)) {
 					triggerRetransmit(requestMessage);
@@ -171,9 +173,9 @@ public class RequestUDP extends Thread{
 				}
 				logger.info("Request Message received, Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId+" Message is: "+new String(requestMessage.messagebytes));
                 
-        		MessageRepository.getInstance().requestMessageList.add(requestMessage);
                 int lastMessageFromServer = getLastMessage(requestMessage.senderId);
                 updateSenderReqList(requestMessage);
+                updateCompleteMessagesReceived(requestMessage,MessageRepository.getInstance().lastGlobalSeqNo);
                 if(requestMessage.messageId > lastMessageFromServer+1) {
                 	for(int i = requestMessage.messageId+1; i<requestMessage.messageId; i++) {
                     	RequestMessHelper.getInstance().requestRetransmitReqMessage(requestMessage.senderId, i);

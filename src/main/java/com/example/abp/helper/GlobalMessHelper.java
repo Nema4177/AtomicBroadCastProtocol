@@ -36,21 +36,26 @@ public class GlobalMessHelper {
 	}
 	
 	public void sendGlobalSeqMessage(RequestMessage requestMessage) {
-		int finishedGlobalSeqNo = MessageRepository.getInstance().lastGlobalSeqNo;
-		while(!checkIfReceivedAllGlobalSeqMessagesTillNow(finishedGlobalSeqNo));
+		int previousGlobalSeqNos = MessageRepository.getInstance().lastGlobalSeqNo;
+		while(!checkIfReceivedAllGlobalSeqMessagesTillNow(previousGlobalSeqNos));
 		int lastWithoutGlobalSeq = RequestMessHelper.getInstance().getLastWithoutSeqNumber(requestMessage.senderId,requestMessage.messageId);
 		if( lastWithoutGlobalSeq < requestMessage.messageId) {
 			requestMessage = RequestMessHelper.getInstance().getRequestMessage(requestMessage.senderId,lastWithoutGlobalSeq);
+			if(requestMessage == null) {
+				logger.info("RequestMessage returned is null");
+				return;
+			}
 			logger.info("All prev messages of the sender does not have global seq number, hence retrieved older message");
 		};
-		GlobalSeqMessage seqMessage = new GlobalSeqMessage(++finishedGlobalSeqNo,
-				requestMessage.senderId, requestMessage.messageId, requestMessage.messagebytes);
+		
+		Properties.stateChange = true;
+
+		GlobalSeqMessage seqMessage = new GlobalSeqMessage(++previousGlobalSeqNos,
+				requestMessage.senderId, requestMessage.messageId, requestMessage.messagebytes,requestMessage.apiNumber);
 		logger.info("Glboal Seq Message constructed"+" Global Seq Message Id: " + seqMessage.globalSeqId+" Sender Id: " + seqMessage.senderId+ " Message Id is: " + seqMessage.messageId+" Message is: " + new String(seqMessage.messageBytes));
 		byte[] messageBytes = sequenceUdp.convertToBytes(seqMessage);
 		sequenceUdp.sendPacketToAll(messageBytes);
-
-		logger.info("Global Seq Message sent, so delivering the message");		
-		//MessageRepository.getInstance().assignGlobalSeq = false;
+		MessageRepository.getInstance().assignGlobalSeq = false;
 	}
 	
 	public boolean checkIfReceivedAllGlobalSeqMessagesTillNow(int lastGlobalSeqNo) {
@@ -74,7 +79,7 @@ public class GlobalMessHelper {
 		logger.info("Retransmit request received for glboal seq id: "+globalSeqId);
 		int serverNumber = globalSeqId % Properties.totalServers+1;
 		GlobalSeqMessage seqMessage = new GlobalSeqMessage(globalSeqId,
-				Properties.senderId, 0, Properties.retransmitMessage.getBytes());
+				Properties.senderId, 0, Properties.retransmitMessage.getBytes(),Properties.apiNumber);
 		logger.info("Retransmit message constructed - globalSeqId: "+globalSeqId);
 		byte[] messageBytes = sequenceUdp.convertToBytes(seqMessage);
 		try {

@@ -12,6 +12,8 @@ import com.example.abp.properties.Properties;
 import java.util.LinkedList;
 import java.util.List;
 
+import javax.annotation.PostConstruct;
+
 import org.apache.log4j.Logger;
 import org.json.simple.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +37,10 @@ public class ABPController {
 	@Autowired
 	public Auditor auditor;
 	
+	@PostConstruct
+	void init() {
+		auditor.start();
+	}
 	int requestMessageId=0;
 		
 	@GetMapping(path = "/test", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -45,14 +51,13 @@ public class ABPController {
 	
 	@PostMapping(path = "/publish", produces = MediaType.APPLICATION_JSON_VALUE)
 	public ResponseEntity<JSONObject> createAccount(@RequestBody JSONObject input) {
-		auditor.start();
 		JSONObject entity = new JSONObject();
 		String message = (String) input.get("message");
 		RequestMessage requestMessage = new RequestMessage(message.getBytes(),getNextId(),Properties.apiNumber);
-		MessageRepository.getInstance().requestMessageList.add(requestMessage);
 		logger.info("Send Message constructed: Request Message Id: "+requestMessage.messageId+" Sender Id: "+requestMessage.senderId+" Messages is "+message);
         byte[] messageBytes = reqMessHelper.requestUdp.convertToBytes(requestMessage);
 		reqMessHelper.requestUdp.sendPacketToAll(messageBytes);
+		Properties.stateChange = true;
 		entity.put("status", "success");
 		return new ResponseEntity<JSONObject>(entity, HttpStatus.OK);
 	}

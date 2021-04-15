@@ -101,6 +101,7 @@ public class SequenceUDP extends Thread {
 	}
 	
 	private synchronized void updateMetaData(GlobalSeqMessage globalSeqMessage,int lastGlobalSeqNo) {
+		logger.info("Updating globalSeqList: "+globalSeqMessage.globalSeqId);
 		MessageRepository.getInstance().sequenceMessageList.add(globalSeqMessage);
 		
 		HashMap<Integer,Integer> senderMap = MessageRepository.getInstance().senderIdReqIdToGlobalSeqNoMap.get(globalSeqMessage.senderId);
@@ -163,6 +164,7 @@ public class SequenceUDP extends Thread {
 			try {
 
 				GlobalSeqMessage globalSeqMessage = receivePacket();
+				Properties.stateChange = true;
 				String messageString = new String(globalSeqMessage.messageBytes);
 				if(messageString.equals(Properties.retransmitMessage)) {
 					triggerRetransmit(globalSeqMessage);
@@ -170,14 +172,12 @@ public class SequenceUDP extends Thread {
 				}
 				if (globalSeqMessage.globalSeqId > MessageRepository.getInstance().lastGlobalSeqNo) {
 					if (globalSeqMessage.globalSeqId > MessageRepository.getInstance().lastGlobalSeqNo + 1) {
-						for (int i = MessageRepository
-								.getInstance().lastGlobalSeqNo+1; i <= globalSeqMessage.globalSeqId; i++) {
+						for (int i = MessageRepository.getInstance().lastGlobalSeqNo+1; i <= globalSeqMessage.globalSeqId; i++) {
 							GlobalMessHelper.getInstance().requestRetransmitGlobalSeqMessage(i);
 						}
 					}
 					MessageRepository.getInstance().lastGlobalSeqNo = globalSeqMessage.globalSeqId;
-					if (MessageRepository.getInstance().lastGlobalSeqNo
-							% Properties.totalServers == Properties.moduloRequired) {
+					if (MessageRepository.getInstance().lastGlobalSeqNo % Properties.totalServers == Properties.moduloRequired) {
 						MessageRepository.getInstance().assignGlobalSeq = true;
 					} else {
 						MessageRepository.getInstance().assignGlobalSeq = false;
